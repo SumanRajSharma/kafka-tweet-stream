@@ -1,3 +1,4 @@
+from kafka_producer_consumer import kafka_producer
 from json import dumps
 import requests
 import json
@@ -6,6 +7,9 @@ import os
 # Load the contents of the .env file into the environment
 BEARER_TOKEN = os.environ.get("BEARER_TOKEN")
 BOOTSTRAP_SERVER = os.environ.get("BOOTSTRAP_SERVER")
+
+# Kafka topic where the tweets will be published; Since I was working on Australian Open tweets I chose 'AusOpen'
+TOPIC = 'AusOpen'
 
 def bearer_oauth(r):
     """
@@ -69,7 +73,7 @@ def set_rules(delete):
     print(json.dumps(response.json()))
 
 
-def get_stream(set):
+def get_stream(set, producer):
     response = requests.get(
         "https://api.twitter.com/2/tweets/search/stream", auth=bearer_oauth, stream=True,
     )
@@ -82,16 +86,18 @@ def get_stream(set):
     for response_line in response.iter_lines():
         if response_line:
             json_response = json.loads(response_line)
-            # Send a message to the Kafka topic
             print(json.dumps({json_response['data']['id']: json_response['data']['text']}))
-
+            # Send a message to the Kafka topic
+            producer.send(TOPIC, value={json_response['data']['id']: json_response['data']['text']})
+            producer.flush()
 
 def broadcast_tweets():
     rules = get_rules()
-    print(rules)
     delete = delete_all_rules(rules)
     set = set_rules(delete)
-    get_stream(set)
+    # Create a kafka producer client object
+    producer = kafka_producer(BOOTSTRAP_SERVER)
+    get_stream(set, producer)
 
 
 if __name__ == "__main__":
